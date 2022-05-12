@@ -1,14 +1,15 @@
 package common.tileentities;
 
+import common.Blocks;
+import common.blocks.*;
 import gregtech.api.enums.Textures.BlockIcons;
 import gregtech.api.gui.GT_GUIContainer_MultiMachine;
 import gregtech.api.interfaces.ITexture;
 import gregtech.api.interfaces.metatileentity.IMetaTileEntity;
 import gregtech.api.interfaces.tileentity.IGregTechTileEntity;
-import gregtech.api.metatileentity.implementations.GT_MetaTileEntity_Hatch_Input;
-import gregtech.api.metatileentity.implementations.GT_MetaTileEntity_Hatch_Output;
-import gregtech.api.metatileentity.implementations.GT_MetaTileEntity_MultiBlockBase;
+import gregtech.api.metatileentity.implementations.*;
 import gregtech.api.objects.GT_RenderedTexture;
+import gregtech.api.util.GT_Utility;
 import kekztech.MultiFluidHandler;
 import net.minecraft.block.Block;
 import net.minecraft.entity.player.EntityPlayer;
@@ -20,9 +21,6 @@ import net.minecraft.util.EnumChatFormatting;
 import net.minecraftforge.common.util.ForgeDirection;
 import net.minecraftforge.fluids.FluidStack;
 import org.lwjgl.input.Keyboard;
-
-import common.Blocks;
-import common.blocks.*;
 import util.MultiBlockTooltipBuilder;
 import util.Vector3i;
 import util.Vector3ic;
@@ -39,11 +37,10 @@ public class GTMTE_FluidMultiStorage extends GT_MetaTileEntity_MultiBlockBase {
 	private final static Block_TFFTStorageFieldBlockT3 STORAGE_FIELD3 = (Block_TFFTStorageFieldBlockT3) Blocks.tfftStorageField3;
 	private final static Block_TFFTStorageFieldBlockT4 STORAGE_FIELD4 = (Block_TFFTStorageFieldBlockT4) Blocks.tfftStorageField4;
 	private final static Block_TFFTStorageFieldBlockT5 STORAGE_FIELD5 = (Block_TFFTStorageFieldBlockT5) Blocks.tfftStorageField5;
-	private final static Block MULTI_HATCH = Blocks.tfftMultiHatch;
 	private final static int CASING_TEXTURE_ID = 176;
 
 	private MultiFluidHandler mfh;
-	private HashSet<TE_TFFTMultiHatch> multiHatches = new HashSet<>();
+	private final HashSet<GTMTE_TFFTMultiHatch> sMultiHatches = new HashSet<>();
 
 	private int runningCost = 0;
 	private boolean doVoidExcess = false;
@@ -123,7 +120,7 @@ public class GTMTE_FluidMultiStorage extends GT_MetaTileEntity_MultiBlockBase {
 		}
 		
 		// If there are no basic I/O hatches, let multi hatches handle it and skip a lot of code!
-		if (multiHatches.size() > 0 && super.mInputHatches.size() == 0 && super.mOutputHatches.size() == 0) {
+		if (sMultiHatches.size() > 0 && super.mInputHatches.size() == 0 && super.mOutputHatches.size() == 0) {
 			return true;
 		}
 
@@ -142,7 +139,7 @@ public class GTMTE_FluidMultiStorage extends GT_MetaTileEntity_MultiBlockBase {
 
 		// Push out fluids
 		if (guiSlotItem != null && guiSlotItem.getUnlocalizedName().equals("gt.integrated_circuit")) {
-			final FluidStack storedFluid = mfh.getFluid(fluidSelector);
+			final FluidStack storedFluid = mfh.getFluidCopy(fluidSelector);
 			// Sum available output capacity
 			int possibleOutput = 0;
 			for (GT_MetaTileEntity_Hatch_Output outputHatch : super.mOutputHatches) {
@@ -161,24 +158,22 @@ public class GTMTE_FluidMultiStorage extends GT_MetaTileEntity_MultiBlockBase {
 			super.addOutput(tempStack);
 
 		} else {
-			for (FluidStack storedFluid : mfh.getFluids()) {
-				// Sum available output capacity
-				int possibleOutput = 0;
+			for(int i = 0; i < mfh.getDistinctFluids(); i++) {
+				final FluidStack storedFluidCopy = mfh.getFluidCopy(i);
+				// Calculate how much capacity all available Output Hatches offer
 				for (GT_MetaTileEntity_Hatch_Output outputHatch : super.mOutputHatches) {
-					if (outputHatch.isFluidLocked() && outputHatch.getLockedFluidName().equals(storedFluid.getUnlocalizedName())) {
-						possibleOutput += outputHatch.getCapacity() - outputHatch.getFluidAmount();
-					} else if (outputHatch.getFluid() != null && outputHatch.getFluid().getUnlocalizedName().equals(storedFluid.getUnlocalizedName())) {
-						possibleOutput += outputHatch.getCapacity() - outputHatch.getFluidAmount();
+					if (outputHatch.isFluidLocked() && outputHatch.getLockedFluidName().equals(storedFluidCopy.getUnlocalizedName())) {
+						storedFluidCopy.amount += outputHatch.getCapacity() - outputHatch.getFluidAmount();
+					} else if (outputHatch.getFluid() != null && outputHatch.getFluid().getUnlocalizedName().equals(storedFluidCopy.getUnlocalizedName())) {
+						storedFluidCopy.amount += outputHatch.getCapacity() - outputHatch.getFluidAmount();
 					} else if (outputHatch.getFluid() == null) {
-						possibleOutput += outputHatch.getCapacity() - outputHatch.getFluidAmount();
+						storedFluidCopy.amount += outputHatch.getCapacity() - outputHatch.getFluidAmount();
 					}
 				}
-				// output as much as possible
-				final FluidStack tempStack = storedFluid.copy();
-				tempStack.amount = possibleOutput;
-				// TODO possible concurrent modification exception as pullFluid calls remove() without an iterator
-				tempStack.amount = mfh.pullFluid(tempStack, true);
-				super.addOutput(tempStack);
+				// Test how much can actually be drained and drain that amount
+				storedFluidCopy.amount = mfh.pullFluid(storedFluidCopy, true);
+				// Add to output
+				super.addOutput(storedFluidCopy);
 			}
 		}
 
@@ -244,7 +239,7 @@ public class GTMTE_FluidMultiStorage extends GT_MetaTileEntity_MultiBlockBase {
 		float runningCostAcc = 0;
 		double fluidCapacityAcc = 0;
 
-		multiHatches.clear();
+		sMultiHatches.clear();
 
 		// Front segment
 		for (int X = -2; X <= 2; X++) {
@@ -264,22 +259,14 @@ public class GTMTE_FluidMultiStorage extends GT_MetaTileEntity_MultiBlockBase {
 					if (!super.addMaintenanceToMachineList(currentTE, CASING_TEXTURE_ID)
 							&& !super.addInputToMachineList(currentTE, CASING_TEXTURE_ID)
 							&& !super.addOutputToMachineList(currentTE, CASING_TEXTURE_ID)
-							&& !super.addEnergyInputToMachineList(currentTE, CASING_TEXTURE_ID)) {
-
-						final Block b = thisController.getBlockOffset(offset.x(), offset.y(), offset.z());
+							&& !super.addEnergyInputToMachineList(currentTE, CASING_TEXTURE_ID)
+							&& !addMultiHatchToMachineList(currentTE, CASING_TEXTURE_ID)) {
 
 						// If it's not a hatch, is it the right casing for this machine? Check block and block meta.
 						// Also check for multi hatch
-						if (b == CASING) {
+						if (thisController.getBlockOffset(offset.x(), offset.y(), offset.z()) == CASING) {
 							// Seems to be valid casing. Decrement counter.
 							minCasingAmount--;
-						} else if (b == MULTI_HATCH) {
-							final TE_TFFTMultiHatch mh =
-									(TE_TFFTMultiHatch) thisController.getWorld().getTileEntity(
-											thisController.getXCoord() + offset.x(),
-											thisController.getYCoord() + offset.y(),
-											thisController.getZCoord() + offset.z());
-							multiHatches.add(mh);
 						} else {
 							formationChecklist = false;
 						}
@@ -345,20 +332,14 @@ public class GTMTE_FluidMultiStorage extends GT_MetaTileEntity_MultiBlockBase {
 						// Tries to add TE as either of those kinds of hatches.
 						// The number is the texture index number for the texture that needs to be painted over the hatch texture (TAE for GT++)
 						if (!super.addInputToMachineList(currentTE, CASING_TEXTURE_ID)
-								&& !super.addOutputToMachineList(currentTE, CASING_TEXTURE_ID)) {
+								&& !super.addOutputToMachineList(currentTE, CASING_TEXTURE_ID)
+								&& !addMultiHatchToMachineList(currentTE, CASING_TEXTURE_ID)) {
 
 							// If it's not a hatch, is it the right casing for this machine? Check block and block meta.
 							// Also check for multi hatch
 							if (thisController.getBlockOffset(offset.x(), offset.y(), offset.z()) == CASING) {
 								// Seems to be valid casing. Decrement counter.
 								minCasingAmount--;
-							} else if (thisController.getBlockOffset(offset.x(), offset.y(), offset.z()) == MULTI_HATCH) {
-								final TE_TFFTMultiHatch mh =
-										(TE_TFFTMultiHatch) thisController.getWorld().getTileEntity(
-												thisController.getXCoord() + offset.x(),
-												thisController.getYCoord() + offset.y(),
-												thisController.getZCoord() + offset.z());
-								multiHatches.add(mh);
 							} else if (!thisController.getBlockOffset(offset.x(), offset.y(), offset.z()).getUnlocalizedName().equals(glassNameIC2Reinforced)) {
 								formationChecklist = false;
 							}
@@ -382,19 +363,13 @@ public class GTMTE_FluidMultiStorage extends GT_MetaTileEntity_MultiBlockBase {
 					if (!super.addMaintenanceToMachineList(currentTE, CASING_TEXTURE_ID)
 							&& !super.addInputToMachineList(currentTE, CASING_TEXTURE_ID)
 							&& !super.addOutputToMachineList(currentTE, CASING_TEXTURE_ID)
-							&& !super.addEnergyInputToMachineList(currentTE, CASING_TEXTURE_ID)) {
+							&& !super.addEnergyInputToMachineList(currentTE, CASING_TEXTURE_ID)
+							&& !addMultiHatchToMachineList(currentTE, CASING_TEXTURE_ID)) {
 
 						// If it's not a hatch, is it the right casing for this machine? Check block and block meta.
 						if (thisController.getBlockOffset(offset.x(), offset.y(), offset.z()) == CASING) {
 							// Seems to be valid casing. Decrement counter.
 							minCasingAmount--;
-						} else if (thisController.getBlockOffset(offset.x(), offset.y(), offset.z()) == MULTI_HATCH) {
-							final TE_TFFTMultiHatch mh =
-									(TE_TFFTMultiHatch) thisController.getWorld().getTileEntity(
-											thisController.getXCoord() + offset.x(),
-											thisController.getYCoord() + offset.y(),
-											thisController.getZCoord() + offset.z());
-							multiHatches.add(mh);
 						} else {
 							formationChecklist = false;
 						}
@@ -419,7 +394,7 @@ public class GTMTE_FluidMultiStorage extends GT_MetaTileEntity_MultiBlockBase {
 			formationChecklist = false;
 		}
 
-		if (this.mMaintenanceHatches.size() < 1) {
+		if (this.mMaintenanceHatches.size() != 1) {
 			formationChecklist = false;
 		}
 
@@ -432,13 +407,13 @@ public class GTMTE_FluidMultiStorage extends GT_MetaTileEntity_MultiBlockBase {
 			// Update MultiFluidHandler in case storage cells have been changed
 			final int capacityPerFluid = (int) Math.round(fluidCapacityAcc / 25.0f);
 			if (mfh == null) {
-				mfh = new MultiFluidHandler(capacityPerFluid);
+				mfh = MultiFluidHandler.newInstance(25, capacityPerFluid);
 			} else {
 				if (mfh.getCapacity() != capacityPerFluid) {
-					mfh = new MultiFluidHandler(capacityPerFluid, mfh.getFluids());
+					mfh = MultiFluidHandler.newAdjustedInstance(mfh, capacityPerFluid);
 				}
 			}
-			for (TE_TFFTMultiHatch mh : multiHatches) {
+			for (GTMTE_TFFTMultiHatch mh : sMultiHatches) {
 				mh.setMultiFluidHandler(mfh);
 			}
 		}
@@ -446,15 +421,26 @@ public class GTMTE_FluidMultiStorage extends GT_MetaTileEntity_MultiBlockBase {
 		return formationChecklist;
 	}
 
+	public boolean addMultiHatchToMachineList(IGregTechTileEntity aTileEntity, int aBaseCasingIndex) {
+		if (aTileEntity == null) {
+			return false;
+		} else {
+			final IMetaTileEntity aMetaTileEntity = aTileEntity.getMetaTileEntity();
+			if (aMetaTileEntity == null) {
+				return false;
+			} else if (aMetaTileEntity instanceof GTMTE_TFFTMultiHatch) {
+				((GTMTE_TFFTMultiHatch)aMetaTileEntity).updateTexture(aBaseCasingIndex);
+				return this.sMultiHatches.add((GTMTE_TFFTMultiHatch)aMetaTileEntity);
+			} else {
+				return false;
+			}
+		}
+	}
+
 	@Override
 	public void onScrewdriverRightClick(byte aSide, EntityPlayer aPlayer, float aX, float aY, float aZ) {
-		if (doVoidExcess) {
-			doVoidExcess = false;
-			aPlayer.addChatComponentMessage(new ChatComponentText("Auto-voiding turned off"));
-		} else {
-			doVoidExcess = true;
-			aPlayer.addChatComponentMessage(new ChatComponentText("Auto-voiding turned on"));
-		}
+		doVoidExcess = !doVoidExcess;
+		GT_Utility.sendChatToPlayer(aPlayer, doVoidExcess ? "Auto-voiding enabled" : "Auto-voiding disabled");
 	}
 
 	@Override
@@ -496,9 +482,8 @@ public class GTMTE_FluidMultiStorage extends GT_MetaTileEntity_MultiBlockBase {
 		runningCost = nbt.getInteger("runningCost");
 		doVoidExcess = nbt.getBoolean("doVoidExcess");
 
-		mfh = new MultiFluidHandler();
-		mfh.loadNBTData(nbt);
-		for (TE_TFFTMultiHatch mh : multiHatches) {
+		mfh = mfh.loadNBTData(nbt);
+		for (GTMTE_TFFTMultiHatch mh : sMultiHatches) {
 			mh.setMultiFluidHandler(mfh);
 		}
 		super.loadNBTData(nbt);

@@ -33,10 +33,13 @@ public class Blocks {
 	public static Block jarIchor;
 	
 	public static Block lscLapotronicEnergyUnit;
+	public static Block beamTransmitter;
 
 	public static Block spaceElevatorStructure;
 	public static Block spaceElevatorCapacitor;
 	public static Block spaceElevatorTether;
+
+	public static Block largeHexPlate;
 	
 	public static void preInit() {
 		KekzCore.LOGGER.info("Registering blocks...");
@@ -44,11 +47,11 @@ public class Blocks {
 		registerBlocks_SOFC();
 		registerBlocks_TFFT();
 		registerBlocks_Nuclear();
-		//registerBlocks_ItemServer();
 		//registerBlocks_ItemProxy();
 		registerBlocks_Jars();
 		registerBlocks_LSC();
-		registerBlocks_SpaceElevator();
+		//registerBlocks_SpaceElevator();
+		registerBlocks_Cosmetics();
 
 		KekzCore.LOGGER.info("Finished registering blocks");
 	}
@@ -73,13 +76,7 @@ public class Blocks {
 		reactorChamberON = Block_ReactorChamber_ON.registerBlock();
 		reactorControlRod = Block_ControlRod.registerBlock();
 	}
-	
-	private static void registerBlocks_ItemServer() {
-		itemServerDrive = Block_ItemServerDrive.registerBlock();
-		itemServerRackCasing = Block_ItemServerRackCasing.registerBlock();
-		itemServerIOPort = Block_ItemServerIOPort.registerBlock();
-	}
-	
+
 	private static void registerBlocks_ItemProxy() {
 		itemProxyCable = Block_ItemProxyCable.registerBlock();
 		itemProxySource = Block_ItemProxySource.registerBlock();
@@ -93,12 +90,17 @@ public class Blocks {
 	
 	private static void registerBlocks_LSC() {
 		lscLapotronicEnergyUnit = Block_LapotronicEnergyUnit.registerBlock();
+		beamTransmitter = Block_BeamTransmitter.registerBlock();
 	}
 
 	private static void registerBlocks_SpaceElevator() {
 		spaceElevatorStructure = Block_SpaceElevator.registerBlock();
 		spaceElevatorCapacitor = Block_SpaceElevatorCapacitor.registerBlock();
 		spaceElevatorTether = Block_SpaceElevatorTether.registerBlock();
+	}
+
+	private static void registerBlocks_Cosmetics() {
+		largeHexPlate = Block_LargeHexPlate.registerBlock();
 	}
 
 }
