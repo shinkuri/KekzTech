@@ -1,7 +1,7 @@
 # Log file
 *.log
 
-# Package Files #
+# Package Files
 *.log.gz
 *.war
 *.nar
@@ -30,7 +30,7 @@ usernamecache.json
 /config/
 
 # intellij related things
-.idea/dictionaries/*
+.idea
 
 # other stuff
 eclipse/
